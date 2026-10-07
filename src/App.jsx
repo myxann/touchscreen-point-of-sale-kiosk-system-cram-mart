@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { supabase } from './lib/supabase'
+import React, { useState, useEffect } from 'react'
 
 const FALLBACK_PRODUCTS = [
   { id: 1, name: 'Coffee — Academic Comeback', price: 45, emoji: '☕', description: 'This semester is still salvageable.' },
