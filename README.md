@@ -117,7 +117,7 @@ Clone the project using Git:
 ```bash
 git clone https://github.com/myxann/touchscreen-point-of-sale-kiosk-system-cram-mart.git
 
-Navigate to the project directory:
+# Navigate to the project directory:
 cd touchscreen-point-of-sale-kiosk-system-cram-mart
 
 2. Install Dependencies
@@ -440,3 +440,4 @@ The project demonstrates practical implementation of:
 📄 License
 This project was developed for academic and educational purposes.
 © 2026 CRAM MART Development Team.
+
