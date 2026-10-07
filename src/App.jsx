@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import React, { useState, useEffect } from 'react'
 
@@ -32,6 +32,8 @@ function App() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [receipt, setReceipt] = useState(null)
+  const paymentLock = useRef(false)
+  const saveAttempt = useRef(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -69,43 +71,54 @@ function App() {
 
   const saveOrder = async transaction => {
     if (!supabase) return true
-    const orderId = crypto.randomUUID()
-    const { error: orderError } = await supabase.from('orders').insert({
-      id: orderId,
-      transaction_ref: transaction.reference, total: transaction.total, payment_method: transaction.method,
-      amount_paid: transaction.amountPaid, change: transaction.change,
-    })
-    if (orderError) throw orderError
+    const attempt = saveAttempt.current
+    if (!attempt.orderInserted) {
+      const { error: orderError } = await supabase.from('orders').insert({
+        id: attempt.orderId,
+        transaction_ref: transaction.reference, total: transaction.total, payment_method: transaction.method,
+        amount_paid: transaction.amountPaid, change: transaction.change,
+      })
+      if (orderError) throw orderError
+      attempt.orderInserted = true
+    }
     const { error: itemError } = await supabase.from('order_items').insert(transaction.items.map(item => ({
-      order_id: orderId, product_id: item.id, product_name: item.name, quantity: item.quantity,
+      order_id: attempt.orderId, product_id: item.id, product_name: item.name, quantity: item.quantity,
       unit_price: item.price, subtotal: item.price * item.quantity,
     })))
     if (itemError) throw itemError
     return true
   }
   const finalizePayment = async (chosenMethod, amountPaid) => {
-    if (processing || saving) return
+    if (paymentLock.current) return
+    paymentLock.current = true
     setProcessing(true); setSaveError(false); notify('Processing payment...')
     await new Promise(resolve => setTimeout(resolve, 650))
-    const transaction = { reference: makeReference(), date: new Date().toLocaleString('en-PH'), items: cart.map(item => ({ ...item })), total, method: chosenMethod, amountPaid, change: amountPaid - total }
+    const pending = saveAttempt.current?.transaction
+    const sameAttempt = pending && pending.method === chosenMethod && pending.amountPaid === amountPaid && pending.total === total &&
+      pending.items.length === cart.length && pending.items.every((item, index) => item.id === cart[index].id && item.quantity === cart[index].quantity && item.price === cart[index].price)
+    const transaction = sameAttempt ? pending : { reference: makeReference(), date: new Date().toLocaleString('en-PH'), items: cart.map(item => ({ ...item })), total, method: chosenMethod, amountPaid, change: amountPaid - total }
+    if (!sameAttempt) saveAttempt.current = { orderId: crypto.randomUUID(), transaction, orderInserted: false }
     setSaving(true)
     try {
       await saveOrder(transaction)
+      saveAttempt.current = null
       setReceipt(transaction); setScreen('success'); notify('Payment successful')
     } catch (error) {
       setSaveError(true); notify('Save failed — Retry')
     } finally {
+      paymentLock.current = false
       setSaving(false); setProcessing(false)
     }
   }
   const payCash = () => {
-    const amount = Number(cashInput)
-    if (!cashInput.trim() || !Number.isFinite(amount) || amount < 0) return notify('Invalid amount')
+    const cash = cashInput.trim()
+    const amount = Number(cash)
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(cash) || !Number.isFinite(amount)) return notify('Invalid amount')
     if (amount < total) return notify('Insufficient payment')
     finalizePayment('Cash', amount)
   }
   const newTransaction = () => {
-    setCart([]); setScreen('items'); setMethod(''); setCashInput(''); setProcessing(false); setSaving(false); setSaveError(false); setReceipt(null); setToast('Ready for a new academic emergency.')
+    setCart([]); setScreen('items'); setMethod(''); setCashInput(''); setProcessing(false); setSaving(false); setSaveError(false); setReceipt(null); saveAttempt.current = null; setToast('Ready for a new academic emergency.')
   }
 
   const OrderLines = ({ items = cart }) => <div className="line-list">{items.map(item => <div className="order-line" key={item.id}>
