@@ -69,13 +69,15 @@ function App() {
 
   const saveOrder = async transaction => {
     if (!supabase) return true
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
+    const orderId = crypto.randomUUID()
+    const { error: orderError } = await supabase.from('orders').insert({
+      id: orderId,
       transaction_ref: transaction.reference, total: transaction.total, payment_method: transaction.method,
       amount_paid: transaction.amountPaid, change: transaction.change,
-    }).select('id').single()
+    })
     if (orderError) throw orderError
     const { error: itemError } = await supabase.from('order_items').insert(transaction.items.map(item => ({
-      order_id: order.id, product_id: item.id, product_name: item.name, quantity: item.quantity,
+      order_id: orderId, product_id: item.id, product_name: item.name, quantity: item.quantity,
       unit_price: item.price, subtotal: item.price * item.quantity,
     })))
     if (itemError) throw itemError
